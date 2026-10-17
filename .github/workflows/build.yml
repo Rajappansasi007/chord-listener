@@ -130,6 +130,7 @@ jobs:
           import android.widget.AdapterView;
           import android.widget.ArrayAdapter;
           import android.widget.Button;
+          import android.widget.CheckBox;
           import android.widget.LinearLayout;
           import android.widget.ScrollView;
           import android.widget.Spinner;
@@ -145,6 +146,7 @@ jobs:
               private MediaPlayer player;
               private Spinner instrumentSpinner;
               private Spinner chordTypeSpinner;
+              private CheckBox sustainCheckbox;
               private TextView status;
               private int lastRoot = -1;
               private int fileNumber = 0;
@@ -219,6 +221,13 @@ jobs:
                       chordTypeNames
                   ));
                   controlsLayout.addView(chordTypeSpinner);
+
+                  // Sustain / Continued Stretch Checkbox
+                  sustainCheckbox = new CheckBox(this);
+                  sustainCheckbox.setText("Sustain / Loop Chord (Continued Stretch)");
+                  sustainCheckbox.setTextSize(14);
+                  sustainCheckbox.setPadding(0, dp(12), 0, dp(4));
+                  controlsLayout.addView(sustainCheckbox);
 
                   body.addView(controlsLayout);
 
@@ -315,6 +324,7 @@ jobs:
                   lastRoot = root;
 
                   int chordTypeIndex = chordTypeSpinner.getSelectedItemPosition();
+                  boolean isSustained = sustainCheckbox.isChecked();
                   int[] intervals = chordIntervals[chordTypeIndex];
                   int[] notes = new int[intervals.length];
 
@@ -331,7 +341,7 @@ jobs:
                   }
 
                   status.setText(
-                      roots[root] + " " + chordTypeNames[chordTypeIndex] + "\n" +
+                      roots[root] + " " + chordTypeNames[chordTypeIndex] + (isSustained ? " (Sustained)" : "") + "\n" +
                       "Notes: " + noteNames.toString() + "\n" +
                       "Instrument: " + sounds[choice]
                   );
@@ -356,6 +366,9 @@ jobs:
                       current.setOnPreparedListener(mediaPlayer -> {
                           file.delete();
                           if (player == mediaPlayer) {
+                              if (isSustained) {
+                                  mediaPlayer.setLooping(true);
+                              }
                               mediaPlayer.start();
                           }
                       });
