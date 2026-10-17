@@ -224,7 +224,7 @@ jobs:
 
                   // Sustain / Continued Stretch Checkbox
                   sustainCheckbox = new CheckBox(this);
-                  sustainCheckbox.setText("Sustain / Loop Chord (Continued Stretch)");
+                  sustainCheckbox.setText("Sustain / Continuous Stretch (Hold until Stop)");
                   sustainCheckbox.setTextSize(14);
                   sustainCheckbox.setPadding(0, dp(12), 0, dp(4));
                   controlsLayout.addView(sustainCheckbox);
@@ -333,6 +333,7 @@ jobs:
                   }
 
                   int choice = instrumentSpinner.getSelectedItemPosition();
+                  int durationTicks = isSustained ? 288000 : 1920; // ~10 minutes if sustained, else 4 beats
 
                   StringBuilder noteNames = new StringBuilder();
                   for (int i = 0; i < intervals.length; i++) {
@@ -341,7 +342,7 @@ jobs:
                   }
 
                   status.setText(
-                      roots[root] + " " + chordTypeNames[chordTypeIndex] + (isSustained ? " (Sustained)" : "") + "\n" +
+                      roots[root] + " " + chordTypeNames[chordTypeIndex] + (isSustained ? " (Sustained Hold)" : "") + "\n" +
                       "Notes: " + noteNames.toString() + "\n" +
                       "Instrument: " + sounds[choice]
                   );
@@ -350,7 +351,7 @@ jobs:
 
                   try {
                       try (FileOutputStream output = new FileOutputStream(file)) {
-                          output.write(makeMidi(notes, programs[choice]));
+                          output.write(makeMidi(notes, programs[choice], durationTicks));
                       }
 
                       MediaPlayer current = new MediaPlayer();
@@ -366,9 +367,6 @@ jobs:
                       current.setOnPreparedListener(mediaPlayer -> {
                           file.delete();
                           if (player == mediaPlayer) {
-                              if (isSustained) {
-                                  mediaPlayer.setLooping(true);
-                              }
                               mediaPlayer.start();
                           }
                       });
@@ -400,7 +398,7 @@ jobs:
                   }
               }
 
-              private byte[] makeMidi(int[] notes, int program) throws IOException {
+              private byte[] makeMidi(int[] notes, int program, int durationTicks) throws IOException {
                   ByteArrayOutputStream trackBytes = new ByteArrayOutputStream();
                   DataOutputStream track = new DataOutputStream(trackBytes);
 
@@ -420,7 +418,7 @@ jobs:
                   }
 
                   for (int index = 0; index < notes.length; index++) {
-                      variable(track, index == 0 ? 1920 : 0);
+                      variable(track, index == 0 ? durationTicks : 0);
                       track.writeByte(0x80);
                       track.writeByte(notes[index]);
                       track.writeByte(0);
