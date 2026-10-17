@@ -28,6 +28,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+          cache: 'gradle'
 
       - name: Install Android platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -143,10 +144,10 @@ jobs:
 
           public class MainActivity extends Activity {
               private MediaPlayer player;
-              private Spinner instrument;
+              private Spinner instrumentSpinner;
+              private Spinner chordTypeSpinner;
               private TextView status;
               private int lastRoot = -1;
-              private boolean lastMinor;
               private int fileNumber = 0;
 
               private final String[] roots = {
@@ -160,167 +161,186 @@ jobs:
 
               private final int[] programs = {0, 48, 40, 65, 80};
 
+              private final String[] chordTypeNames = {
+                  "Major", "Minor", "Major 7th", "Dominant 7th", "Minor 7th"
+              };
+
+              private final int[][] chordIntervals = {
+                  {0, 4, 7},       // Major
+                  {0, 3, 7},       // Minor
+                  {0, 4, 7, 11},   // Major 7th
+                  {0, 4, 7, 10},   // Dominant 7th
+                  {0, 3, 7, 10}    // Minor 7th
+              };
+
               @Override
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
 
                   LinearLayout body = new LinearLayout(this);
                   body.setOrientation(LinearLayout.VERTICAL);
-                  body.setPadding(dp(18), dp(24), dp(18), dp(24));
+                  body.setPadding(dp(20), dp(24), dp(20), dp(24));
 
                   ScrollView scroll = new ScrollView(this);
                   scroll.addView(body);
                   setContentView(scroll);
 
-                  label(body, "Chord Listener", 28);
-                  label(body, "Choose an instrument, then tap a chord.", 16);
+                  // Header Title & Subtitle
+                  label(body, "Chord Listener", 26, true);
+                  label(body, "Select instrument and chord quality, then tap a root note.", 15, false);
 
-                  instrument = new Spinner(this);
-                  instrument.setAdapter(new ArrayAdapter<String>(
+                  // Controls Container
+                  LinearLayout controlsLayout = new LinearLayout(this);
+                  controlsLayout.setOrientation(LinearLayout.VERTICAL);
+                  controlsLayout.setPadding(0, dp(12), 0, dp(12));
+
+                  TextView instLabel = new TextView(this);
+                  instLabel.setText("Instrument Tone");
+                  instLabel.setTextSize(13);
+                  controlsLayout.addView(instLabel);
+
+                  instrumentSpinner = new Spinner(this);
+                  instrumentSpinner.setAdapter(new ArrayAdapter<>(
                       this,
                       android.R.layout.simple_spinner_dropdown_item,
                       sounds
                   ));
-                  body.addView(instrument);
+                  controlsLayout.addView(instrumentSpinner);
 
-                  status = label(body, "Ready - turn up media volume", 18);
+                  TextView typeLabel = new TextView(this);
+                  typeLabel.setText("Chord Quality");
+                  typeLabel.setTextSize(13);
+                  typeLabel.setPadding(0, dp(12), 0, 0);
+                  controlsLayout.addView(typeLabel);
 
-                  instrument.setOnItemSelectedListener(
-                      new AdapterView.OnItemSelectedListener() {
-                          @Override
-                          public void onItemSelected(
-                              AdapterView<?> parent,
-                              View view,
-                              int position,
-                              long id
-                          ) {
-                              if (lastRoot >= 0) {
-                                  play(lastRoot, lastMinor);
-                              }
-                          }
+                  chordTypeSpinner = new Spinner(this);
+                  chordTypeSpinner.setAdapter(new ArrayAdapter<>(
+                      this,
+                      android.R.layout.simple_spinner_dropdown_item,
+                      chordTypeNames
+                  ));
+                  controlsLayout.addView(chordTypeSpinner);
 
-                          @Override
-                          public void onNothingSelected(
-                              AdapterView<?> parent
-                          ) {
-                          }
-                      }
-                  );
+                  body.addView(controlsLayout);
 
-                  section(body, "Major chords", false);
-                  section(body, "Minor chords", true);
+                  // Status Display Card
+                  status = new TextView(this);
+                  status.setText("Ready - tap a root note below");
+                  status.setTextSize(15);
+                  status.setPadding(dp(16), dp(16), dp(16), dp(16));
+                  status.setBackgroundColor(0xFFE8EEF5);
+                  body.addView(status, new LinearLayout.LayoutParams(
+                      LinearLayout.LayoutParams.MATCH_PARENT,
+                      LinearLayout.LayoutParams.WRAP_CONTENT
+                  ));
 
-                  Button replay = new Button(this);
-                  replay.setText("Replay");
-                  replay.setOnClickListener(view -> {
-                      if (lastRoot >= 0) {
-                          play(lastRoot, lastMinor);
-                      }
-                  });
-                  body.addView(replay);
+                  // Section Header for Root Notes
+                  label(body, "Root Notes", 20, true);
 
-                  Button stop = new Button(this);
-                  stop.setText("Stop");
-                  stop.setOnClickListener(view -> {
-                      stopAudio();
-                      status.setText("Stopped");
-                  });
-                  body.addView(stop);
-
-                  label(
-                      body,
-                      "Offline MIDI sounds. Headphones recommended.
-"
-                          + "Instrument tone may vary by phone.",
-                      14
-                  );
-              }
-
-              private TextView label(
-                  LinearLayout body,
-                  String text,
-                  int size
-              ) {
-                  TextView view = new TextView(this);
-                  view.setText(text);
-                  view.setTextSize(size);
-                  view.setPadding(0, dp(10), 0, dp(10));
-                  body.addView(view);
-                  return view;
-              }
-
-              private void section(
-                  LinearLayout body,
-                  String title,
-                  boolean minor
-              ) {
-                  label(body, title, 21);
-
+                  // Root Note Buttons Grid (4 rows x 3 columns)
                   for (int rowIndex = 0; rowIndex < 4; rowIndex++) {
                       LinearLayout row = new LinearLayout(this);
+                      row.setOrientation(LinearLayout.HORIZONTAL);
+                      row.setPadding(0, dp(4), 0, dp(4));
 
                       for (int columnIndex = 0; columnIndex < 3; columnIndex++) {
                           final int root = rowIndex * 3 + columnIndex;
 
                           Button button = new Button(this);
                           button.setAllCaps(false);
-                          button.setText(roots[root] + (minor ? "m" : ""));
-                          button.setOnClickListener(
-                              view -> play(root, minor)
-                          );
+                          button.setText(roots[root]);
+                          button.setTextSize(16);
+                          button.setOnClickListener(view -> playSelectedChord(root));
 
-                          row.addView(
-                              button,
-                              new LinearLayout.LayoutParams(
-                                  0,
-                                  LinearLayout.LayoutParams.WRAP_CONTENT,
-                                  1f
-                              )
+                          LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                              0,
+                              dp(52),
+                              1f
                           );
+                          params.setMargins(dp(4), 0, dp(4), 0);
+                          row.addView(button, params);
                       }
-
                       body.addView(row);
                   }
+
+                  // Action Buttons Row
+                  LinearLayout actionRow = new LinearLayout(this);
+                  actionRow.setOrientation(LinearLayout.HORIZONTAL);
+                  actionRow.setPadding(0, dp(16), 0, dp(8));
+
+                  Button replay = new Button(this);
+                  replay.setText("Replay");
+                  replay.setOnClickListener(view -> {
+                      if (lastRoot >= 0) {
+                          playSelectedChord(lastRoot);
+                      }
+                  });
+                  LinearLayout.LayoutParams replayParams = new LinearLayout.LayoutParams(
+                      0, dp(48), 1f
+                  );
+                  replayParams.setMargins(0, 0, dp(8), 0);
+                  actionRow.addView(replay, replayParams);
+
+                  Button stop = new Button(this);
+                  stop.setText("Stop");
+                  stop.setOnClickListener(view -> {
+                      stopAudio();
+                      status.setText("Playback stopped");
+                  });
+                  LinearLayout.LayoutParams stopParams = new LinearLayout.LayoutParams(
+                      0, dp(48), 1f
+                  );
+                  stopParams.setMargins(dp(8), 0, 0, 0);
+                  actionRow.addView(stop, stopParams);
+
+                  body.addView(actionRow);
+
+                  // Footer Note
+                  label(body, "Offline MIDI synthesis. Headphones recommended.", 12, false);
               }
 
-              private void play(int root, boolean minor) {
+              private TextView label(LinearLayout body, String text, int size, boolean bold) {
+                  TextView view = new TextView(this);
+                  view.setText(text);
+                  view.setTextSize(size);
+                  if (bold) {
+                      view.setTypeface(null, android.graphics.Typeface.BOLD);
+                  }
+                  view.setPadding(0, dp(8), 0, dp(8));
+                  body.addView(view);
+                  return view;
+              }
+
+              private void playSelectedChord(int root) {
                   stopAudio();
-
                   lastRoot = root;
-                  lastMinor = minor;
 
-                  int middle = minor ? 3 : 4;
-                  int[] notes = {
-                      60 + root,
-                      60 + root + middle,
-                      67 + root
-                  };
+                  int chordTypeIndex = chordTypeSpinner.getSelectedItemPosition();
+                  int[] intervals = chordIntervals[chordTypeIndex];
+                  int[] notes = new int[intervals.length];
 
-                  int choice = instrument.getSelectedItemPosition();
+                  for (int i = 0; i < intervals.length; i++) {
+                      notes[i] = 60 + root + intervals[i];
+                  }
+
+                  int choice = instrumentSpinner.getSelectedItemPosition();
+
+                  StringBuilder noteNames = new StringBuilder();
+                  for (int i = 0; i < intervals.length; i++) {
+                      noteNames.append(roots[(root + intervals[i]) % 12]);
+                      if (i < intervals.length - 1) noteNames.append(" - ");
+                  }
 
                   status.setText(
-                      roots[root]
-                          + (minor ? " minor" : " major")
-                          + "
-"
-                          + roots[root]
-                          + " - "
-                          + roots[(root + middle) % 12]
-                          + " - "
-                          + roots[(root + 7) % 12]
-                          + "
-"
-                          + sounds[choice]
+                      roots[root] + " " + chordTypeNames[chordTypeIndex] + "\n" +
+                      "Notes: " + noteNames.toString() + "\n" +
+                      "Instrument: " + sounds[choice]
                   );
 
-                  File file = new File(
-                      getCacheDir(),
-                      "chord_" + (fileNumber++) + ".mid"
-                  );
+                  File file = new File(getCacheDir(), "chord_" + (fileNumber++) + ".mid");
 
                   try {
-                      try (FileOutputStream output =
-                               new FileOutputStream(file)) {
+                      try (FileOutputStream output = new FileOutputStream(file)) {
                           output.write(makeMidi(notes, programs[choice]));
                       }
 
@@ -330,15 +350,12 @@ jobs:
                       current.setAudioAttributes(
                           new AudioAttributes.Builder()
                               .setUsage(AudioAttributes.USAGE_MEDIA)
-                              .setContentType(
-                                  AudioAttributes.CONTENT_TYPE_MUSIC
-                              )
+                              .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                               .build()
                       );
 
                       current.setOnPreparedListener(mediaPlayer -> {
                           file.delete();
-
                           if (player == mediaPlayer) {
                               mediaPlayer.start();
                           }
@@ -351,21 +368,15 @@ jobs:
                           }
                       });
 
-                      current.setOnErrorListener(
-                          (mediaPlayer, what, extra) -> {
-                              file.delete();
-
-                              if (player == mediaPlayer) {
-                                  player = null;
-                                  mediaPlayer.release();
-                                  status.setText(
-                                      "Playback failed. Try another chord."
-                                  );
-                              }
-
-                              return true;
+                      current.setOnErrorListener((mediaPlayer, what, extra) -> {
+                          file.delete();
+                          if (player == mediaPlayer) {
+                              player = null;
+                              mediaPlayer.release();
+                              status.setText("Playback failed. Try another chord.");
                           }
-                      );
+                          return true;
+                      });
 
                       current.setDataSource(file.getAbsolutePath());
                       current.prepareAsync();
@@ -373,28 +384,16 @@ jobs:
                   } catch (Exception exception) {
                       stopAudio();
                       file.delete();
-                      status.setText(
-                          "Cannot play: " + exception.getMessage()
-                      );
+                      status.setText("Cannot play: " + exception.getMessage());
                   }
               }
 
-              private byte[] makeMidi(int[] notes, int program)
-                  throws IOException {
-                  ByteArrayOutputStream trackBytes =
-                      new ByteArrayOutputStream();
-
-                  DataOutputStream track =
-                      new DataOutputStream(trackBytes);
+              private byte[] makeMidi(int[] notes, int program) throws IOException {
+                  ByteArrayOutputStream trackBytes = new ByteArrayOutputStream();
+                  DataOutputStream track = new DataOutputStream(trackBytes);
 
                   track.write(new byte[] {
-                      0,
-                      (byte) 0xFF,
-                      0x51,
-                      3,
-                      7,
-                      (byte) 0xA1,
-                      0x20
+                      0, (byte) 0xFF, 0x51, 3, 7, (byte) 0xA1, 0x20
                   });
 
                   track.writeByte(0);
@@ -421,11 +420,8 @@ jobs:
                   track.writeByte(0);
                   track.flush();
 
-                  ByteArrayOutputStream bytes =
-                      new ByteArrayOutputStream();
-
-                  DataOutputStream output =
-                      new DataOutputStream(bytes);
+                  ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                  DataOutputStream output = new DataOutputStream(bytes);
 
                   output.writeBytes("MThd");
                   output.writeInt(6);
@@ -440,24 +436,16 @@ jobs:
                   return bytes.toByteArray();
               }
 
-              private void variable(
-                  DataOutputStream output,
-                  int value
-              ) throws IOException {
+              private void variable(DataOutputStream output, int value) throws IOException {
                   int packed = value & 127;
-
                   while ((value >>>= 7) > 0) {
-                      packed = (packed << 8)
-                          | ((value & 127) | 128);
+                      packed = (packed << 8) | ((value & 127) | 128);
                   }
-
                   while (true) {
                       output.writeByte(packed & 255);
-
                       if ((packed & 128) == 0) {
                           break;
                       }
-
                       packed >>>= 8;
                   }
               }
@@ -472,7 +460,6 @@ jobs:
                   }
 
                   File[] files = getCacheDir().listFiles();
-
                   if (files != null) {
                       for (File file : files) {
                           if (file.getName().startsWith("chord_")) {
@@ -490,10 +477,7 @@ jobs:
 
               private int dp(int value) {
                   return Math.round(
-                      value
-                          * getResources()
-                              .getDisplayMetrics()
-                              .density
+                      value * getResources().getDisplayMetrics().density
                   );
               }
           }
